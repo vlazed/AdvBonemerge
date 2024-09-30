@@ -1456,7 +1456,7 @@ if old_ManipulateBonePosition then
 				if CLIENT then ent.LastBoneChangeTime = CurTime() end
 
 				if SERVER and networking2 and !ent.AdvBone_BoneManips_DontNetwork then
-					net.Start("AdvBone_BoneManipPos_SendToCl")
+					net.Start("AdvBone_BoneManipPos_SendToCl", true)
 						net.WriteEntity(ent)
 						net.WriteInt(boneID, 9)
 						net.WriteVector(pos)
@@ -1466,7 +1466,7 @@ if old_ManipulateBonePosition then
 			if CLIENT then
 				ResetBoneChangeTimeOnChildren(ent)
 			elseif networking2 then
-				net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl")
+				net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl", true)
 					net.WriteEntity(ent)
 				net.Broadcast()
 			end
@@ -1519,7 +1519,7 @@ if old_ManipulateBoneAngles then
 				if CLIENT then ent.LastBoneChangeTime = CurTime() end
 
 				if SERVER and networking2 and !ent.AdvBone_BoneManips_DontNetwork then
-					net.Start("AdvBone_BoneManipAng_SendToCl")
+					net.Start("AdvBone_BoneManipAng_SendToCl", true)
 						net.WriteEntity(ent)
 						net.WriteInt(boneID, 9)
 						net.WriteAngle(ang)
@@ -1529,7 +1529,7 @@ if old_ManipulateBoneAngles then
 			if CLIENT then
 				ResetBoneChangeTimeOnChildren(ent)
 			elseif networking2 then
-				net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl")
+				net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl", true)
 					net.WriteEntity(ent)
 				net.Broadcast()
 			end
@@ -1580,7 +1580,7 @@ if old_ManipulateBoneScale then
 
 				//ManipulateBoneScale has no "networking" arg, confirmed through testing 1/1/23
 				if SERVER and !ent.AdvBone_BoneManips_DontNetwork then
-					net.Start("AdvBone_BoneManipScale_SendToCl")
+					net.Start("AdvBone_BoneManipScale_SendToCl", true)
 						net.WriteEntity(ent)
 						net.WriteInt(boneID, 9)
 						net.WriteVector(scale)
@@ -1590,7 +1590,7 @@ if old_ManipulateBoneScale then
 			if CLIENT then
 				ResetBoneChangeTimeOnChildren(ent)
 			else
-				net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl")
+				net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl", true)
 					net.WriteEntity(ent)
 				net.Broadcast()
 			end
@@ -1659,7 +1659,7 @@ if old_SetAngles then
 				if CLIENT then
 					ResetBoneChangeTimeOnChildren(ent)
 				else
-					net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl")
+					net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl", true)
 						net.WriteEntity(ent)
 					net.Broadcast()
 				end
