@@ -1417,6 +1417,23 @@ end, "Data")
 
 local meta = FindMetaTable("Entity")
 
+local BONE_CHANGE_DELAY = 0.1
+
+--- Spread out bone changes per entity by some delay, to avoid sending all bone changes in a single frame
+---@param entity Entity
+local function sendBoneChangeOnTimer(entity)
+	if not entity.LastBoneChangeTime then
+		entity.LastBoneChangeTime = CurTime()
+	end
+	local now = CurTime()
+	if now - entity.LastBoneChangeTime > BONE_CHANGE_DELAY then
+		entity.LastBoneChangeTime = now
+		net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl", true)
+		net.WriteEntity(entity)
+		net.Broadcast()	
+	end
+end
+
 //When an entity is bonemanipped, wake up the BuildBonePositions function of itself and/or any ents advbonemerged to it
 local ResetBoneChangeTimeOnChildren = nil //bah, gotta define this here or it won't exist outside of the block below
 if SERVER then
@@ -1466,9 +1483,7 @@ if old_ManipulateBonePosition then
 			if CLIENT then
 				ResetBoneChangeTimeOnChildren(ent)
 			elseif networking2 then
-				net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl", true)
-					net.WriteEntity(ent)
-				net.Broadcast()
+				sendBoneChangeOnTimer(ent)
 			end
 		end
 		if !(ent:GetClass() == "ent_advbonemerge" or ent:GetClass() == "prop_animated") then
@@ -1529,9 +1544,7 @@ if old_ManipulateBoneAngles then
 			if CLIENT then
 				ResetBoneChangeTimeOnChildren(ent)
 			elseif networking2 then
-				net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl", true)
-					net.WriteEntity(ent)
-				net.Broadcast()
+				sendBoneChangeOnTimer(ent)
 			end
 		end
 		if !(ent:GetClass() == "ent_advbonemerge" or ent:GetClass() == "prop_animated") then
@@ -1590,9 +1603,7 @@ if old_ManipulateBoneScale then
 			if CLIENT then
 				ResetBoneChangeTimeOnChildren(ent)
 			else
-				net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl", true)
-					net.WriteEntity(ent)
-				net.Broadcast()
+				sendBoneChangeOnTimer(ent)
 			end
 		end
 		//if !(ent:GetClass() == "ent_advbonemerge" or ent:GetClass() == "prop_animated") then
