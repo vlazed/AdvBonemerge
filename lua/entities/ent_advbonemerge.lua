@@ -1421,7 +1421,7 @@ local BONE_CHANGE_DELAY = 0.1
 
 --- Spread out bone changes per entity by some delay, to avoid sending all bone changes in a single frame
 ---@param entity Entity
-local function sendBoneChangeOnTimer(entity)
+local function resetBoneChangeTime(entity)
 	if not entity.LastBoneChangeTime then
 		entity.LastBoneChangeTime = CurTime()
 	end
@@ -1483,7 +1483,7 @@ if old_ManipulateBonePosition then
 			if CLIENT then
 				ResetBoneChangeTimeOnChildren(ent)
 			elseif networking2 then
-				sendBoneChangeOnTimer(ent)
+				resetBoneChangeTime(ent)
 			end
 		end
 		if !(ent:GetClass() == "ent_advbonemerge" or ent:GetClass() == "prop_animated") then
@@ -1544,7 +1544,7 @@ if old_ManipulateBoneAngles then
 			if CLIENT then
 				ResetBoneChangeTimeOnChildren(ent)
 			elseif networking2 then
-				sendBoneChangeOnTimer(ent)
+				resetBoneChangeTime(ent)
 			end
 		end
 		if !(ent:GetClass() == "ent_advbonemerge" or ent:GetClass() == "prop_animated") then
@@ -1603,7 +1603,7 @@ if old_ManipulateBoneScale then
 			if CLIENT then
 				ResetBoneChangeTimeOnChildren(ent)
 			else
-				sendBoneChangeOnTimer(ent)
+				resetBoneChangeTime(ent)
 			end
 		end
 		//if !(ent:GetClass() == "ent_advbonemerge" or ent:GetClass() == "prop_animated") then
