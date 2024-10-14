@@ -668,7 +668,8 @@ if SERVER then
 		net.Send(ply)
 
 		//Also, now that we know the entity has initlalized on the client, we can send it the bonemanips as well
-		if ent.AdvBone_BoneManips and !ent.AdvBone_BoneManips_Sent then
+		ent.AdvBone_BoneManips_Sent = ent.AdvBone_BoneManips_Sent or {}
+		if ent.AdvBone_BoneManips and !ent.AdvBone_BoneManips_Sent[ply] then
 			for boneID, tab in pairs (ent.AdvBone_BoneManips) do
 				if tab.p then
 					net.Start("AdvBone_BoneManipPos_SendToCl")
@@ -692,7 +693,7 @@ if SERVER then
 					net.Send(ply)
 				end
 			end
-			ent.AdvBone_BoneManips_Sent = true
+			ent.AdvBone_BoneManips_Sent[ply] = true
 		end
 	end)
 
