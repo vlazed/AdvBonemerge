@@ -32,7 +32,7 @@ function ENT:Initialize()
 	end
 
 	//Create a clientside advbone manips table so that it gets populated when the server sends us values
-	self.AdvBone_BoneManips = {}
+	self.AdvBone_BoneManips = self.AdvBone_BoneManips or {}
 
 	self:AddEffects(EF_BONEMERGE) //necessary for proper shadow rendering
 	self:AddEffects(EF_BONEMERGE_FASTCULL)
@@ -77,7 +77,14 @@ function ENT:Initialize()
 	self.SavedLocalBonePositions = {}
 	self.LastBoneChangeTime = CurTime()
 
-	self:AddCallback("BuildBonePositions", function(_, bonecount)
+	self:AddCallback("BuildBonePositions", self.BuildBonePositions)
+
+end
+
+if CLIENT then
+
+	function ENT:BuildBonePositions(bonecount)
+		self.BuildBonePositions_HasRun = true //Newly connected players will add this callback, but then wipe it; this tells the think func that it actually went through
 		if !IsValid(self) then return end
 		if !self.AdvBone_BoneInfo then return end
 
@@ -596,11 +603,8 @@ function ENT:Initialize()
 		if BonesHaveChanged then
 			self.LastBoneChangeTime = curtime
 		end
-	end)
+	end
 
-end
-
-if CLIENT then
 	function ENT:CalcAbsolutePosition(pos, ang)
 		//Wake up the BuildBonePositions function whenever the entity moves
 		//Note: This will be running every frame for animprops merged to animating entities because the advbonemerge constraint uses FollowBone for some reason I don't recall (exposes more bones?)
@@ -763,7 +767,8 @@ if CLIENT then
 
 		//Fix for demo recording and playback - when demos are recorded, they wipe a bunch of clientside settings like LODs and our BuildBonePositions callback, so redo those by running Initialize.
 		//They also don't seem to record clientside values set on the entity before recording, so tell the server to send us a new BoneInfo table so we can actually record this one.
-		if engine.IsRecordingDemo() and #self:GetCallbacks("BuildBonePositions") == 0 then
+		//Note 10/16/24: Newly connected players also do this, they run Initialize but then wipe the callback and LOD setting right after, so check them as well using self.BuildBonePositions_HasRun.
+		if (!self.BuildBonePositions_HasRun or engine.IsRecordingDemo()) and #self:GetCallbacks("BuildBonePositions") == 0 then
 			self:Initialize()
 			self.AdvBone_BoneInfo_Received = false
 		end
@@ -777,6 +782,7 @@ if CLIENT then
 			//If we don't have a clientside boneinfo table, or need to update it, then request it from the server
 			if !self.AdvBone_BoneInfo_Received then
 				net.Start("AdvBone_EntBoneInfoTable_GetFromSv", true)
+					MsgN(LocalPlayer(), " requesting boneinfo for ", self)
 					net.WriteEntity(self)
 				net.SendToServer()
 			end
