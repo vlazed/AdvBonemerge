@@ -782,7 +782,6 @@ if CLIENT then
 			//If we don't have a clientside boneinfo table, or need to update it, then request it from the server
 			if !self.AdvBone_BoneInfo_Received then
 				net.Start("AdvBone_EntBoneInfoTable_GetFromSv", true)
-					MsgN(LocalPlayer(), " requesting boneinfo for ", self)
 					net.WriteEntity(self)
 				net.SendToServer()
 			end
