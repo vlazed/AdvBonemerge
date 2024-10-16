@@ -671,7 +671,7 @@ if SERVER then
 		//or stop motion helper, but let's be safe here
 		local time = CurTime()
 		ent.AdvBone_ResetBoneChangeTime_LastSent = ent.AdvBone_ResetBoneChangeTime_LastSent or 0
-		if time > ent.AdvBone_ResetBoneChangeTime_LastSent then
+		if time - ent.AdvBone_ResetBoneChangeTime_LastSent > 0.1 then
 			ent.AdvBone_ResetBoneChangeTime_LastSent = time
 			net.Start("AdvBone_ResetBoneChangeTime_SendToCl", true)
 				net.WriteEntity(ent)

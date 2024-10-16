@@ -1434,7 +1434,7 @@ AdvBone_ResetBoneChangeTimeOnChildren = function(ent, networking) //global func 
 		//tickrate at all, so i don't know how we'd add any more of a delay without potentially breaking things for players with an insanely high framerate.
 		local time = CurTime()
 		ent.AdvBone_ResetBoneChangeTimeOnChildren_LastSent = ent.AdvBone_ResetBoneChangeTimeOnChildren_LastSent or time
-		if time > ent.AdvBone_ResetBoneChangeTimeOnChildren_LastSent then
+		if time - ent.AdvBone_ResetBoneChangeTimeOnChildren_LastSent > 0.1 then
 			ent.AdvBone_ResetBoneChangeTimeOnChildren_LastSent = time
 			net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl", true)
 				net.WriteEntity(ent)
