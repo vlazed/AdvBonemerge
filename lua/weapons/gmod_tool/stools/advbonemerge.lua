@@ -660,6 +660,36 @@ end
 
 
 
+//note 10/15/14: this is now duplicated code in both advbone and animpropoverhaul, lame
+//(used by cpanel options to wake up buildbonepositions now that bonemanips don't always do that)
+if SERVER then
+
+	util.AddNetworkString("AdvBone_ResetBoneChangeTime_SendToCl")
+
+	AdvBone_ResetBoneChangeTime = function(ent)
+		//Limit how often the server sends this to clients; i don't know of any obvious cases where this would happen a lot like AdvBone_ResetBoneChangeTimeOnChildren does from manips
+		//or stop motion helper, but let's be safe here
+		local time = CurTime()
+		ent.AdvBone_ResetBoneChangeTime_LastSent = ent.AdvBone_ResetBoneChangeTime_LastSent or 0
+		if time > ent.AdvBone_ResetBoneChangeTime_LastSent then
+			ent.AdvBone_ResetBoneChangeTime_LastSent = time
+			net.Start("AdvBone_ResetBoneChangeTime_SendToCl", true)
+				net.WriteEntity(ent)
+			net.Broadcast()
+		end
+	end
+
+else
+
+	net.Receive("AdvBone_ResetBoneChangeTime_SendToCl", function()
+		local ent = net.ReadEntity()
+		if IsValid(ent) then
+			ent.LastBoneChangeTime = CurTime()
+		end
+	end)
+
+end
+
 //Networking for controlpanel options
 if SERVER then
 
@@ -718,6 +748,10 @@ if SERVER then
 				net.Start("AdvBone_EntBoneInfoTableUpdate_SendToCl")
 					net.WriteEntity(ent)
 				net.Send(filter)
+
+				//Wake up BuildBonePositions
+				AdvBone_ResetBoneChangeTime(ent)
+				AdvBone_ResetBoneChangeTimeOnChildren(ent, true)
 			end
 
 			ent:ManipulateBonePosition(entbone,newpos)
@@ -941,6 +975,9 @@ if SERVER then
 						["parent"] = targetbone,
 						["scale"] = scaletarget,
 					}
+					//Wake up BuildBonePositions
+					AdvBone_ResetBoneChangeTime(ent)
+					AdvBone_ResetBoneChangeTimeOnChildren(ent, true)
 				end
 
 				ent:ManipulateBonePosition(id,newpos)
@@ -954,7 +991,7 @@ if SERVER then
 			local filter = RecipientFilter()
 			filter:AddAllPlayers()
 			if !demofix then filter:RemovePlayer(ply) end //Fix for demo recording - demos don't record boneinfo changes made by the tool, but they DO record network activity, so if ply was recording a demo, then send them a table update too
-			net.Start( "AdvBone_EntBoneInfoTableUpdate_SendToCl" )
+			net.Start("AdvBone_EntBoneInfoTableUpdate_SendToCl")
 				net.WriteEntity(ent)
 			net.Send(filter)
 

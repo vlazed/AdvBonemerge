@@ -649,7 +649,7 @@ if SERVER then
 		local ent = net.ReadEntity()
 		if !IsValid(ent) or !ent.AdvBone_BoneInfo then return end
 
-		net.Start("AdvBone_EntBoneInfoTable_SendToCl")
+		net.Start("AdvBone_EntBoneInfoTable_SendToCl", true)
 			net.WriteEntity(ent)
 
 			net.WriteInt(table.Count(ent.AdvBone_BoneInfo), 9)
@@ -754,6 +754,7 @@ if CLIENT then
 			end
 			ent.AdvBone_BoneInfo = tab
 			ent.AdvBone_BoneInfo_Received = true
+			ent.LastBoneChangeTime = CurTime()
 		end
 	end)
 
@@ -775,7 +776,7 @@ if CLIENT then
 
 			//If we don't have a clientside boneinfo table, or need to update it, then request it from the server
 			if !self.AdvBone_BoneInfo_Received then
-				net.Start("AdvBone_EntBoneInfoTable_GetFromSv")
+				net.Start("AdvBone_EntBoneInfoTable_GetFromSv", true)
 					net.WriteEntity(self)
 				net.SendToServer()
 			end
@@ -1419,26 +1420,36 @@ end, "Data")
 local meta = FindMetaTable("Entity")
 
 //When an entity is bonemanipped, wake up the BuildBonePositions function of itself and/or any ents advbonemerged to it
-local ResetBoneChangeTimeOnChildren = nil //bah, gotta define this here or it won't exist outside of the block below
-if SERVER then
-	util.AddNetworkString("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl")
-else
-	ResetBoneChangeTimeOnChildren = function(ent)
+AdvBone_ResetBoneChangeTimeOnChildren = function(ent, networking) //global func so animprop code can use it
+	if CLIENT then
 		for _, ent2 in pairs (ent:GetChildren()) do
 			if ent2.AdvBone_BoneManips then
 				ent2.LastBoneChangeTime = CurTime()
-				ResetBoneChangeTimeOnChildren(ent2)
+				AdvBone_ResetBoneChangeTimeOnChildren(ent2)
 			end
 		end
+	elseif networking then
+		//Limit how often the server sends this to clients; multiple bone manips at once or ragdoll movements i.e. Stop Motion Helper will run this several times per frame
+		//TODO: can we delay this longer? the client waits until 10 *frames* after LastBoneChangeTime to let BuildBonePositions fall asleep, which of course isn't consistent with server 
+		//tickrate at all, so i don't know how we'd add any more of a delay without potentially breaking things for players with an insanely high framerate.
+		local time = CurTime()
+		ent.AdvBone_ResetBoneChangeTimeOnChildren_LastSent = ent.AdvBone_ResetBoneChangeTimeOnChildren_LastSent or time
+		if time > ent.AdvBone_ResetBoneChangeTimeOnChildren_LastSent then
+			ent.AdvBone_ResetBoneChangeTimeOnChildren_LastSent = time
+			net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl", true)
+				net.WriteEntity(ent)
+			net.Broadcast()
+		end
 	end
+end
 
-	//global version of func so animprop code can use it
-	AdvBone_ResetBoneChangeTimeOnChildren = ResetBoneChangeTimeOnChildren
-
+if SERVER then
+	util.AddNetworkString("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl")
+else
 	net.Receive("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl", function()
 		local ent = net.ReadEntity()
 		if IsValid(ent) then
-			ResetBoneChangeTimeOnChildren(ent)
+			AdvBone_ResetBoneChangeTimeOnChildren(ent)
 		end
 	end)
 end
@@ -1452,29 +1463,23 @@ if old_ManipulateBonePosition then
 			if networking2 == nil then networking2 = true end
 
 			if ent.AdvBone_BoneManips then
-				ent.AdvBone_BoneManips[boneID] = ent.AdvBone_BoneManips[boneID] or {}
-				ent.AdvBone_BoneManips[boneID].p = pos
-				if CLIENT then ent.LastBoneChangeTime = CurTime() end
-
-				if SERVER and networking2 and !ent.AdvBone_BoneManips_DontNetwork then
+				if SERVER and networking2 and !ent.AdvBone_BoneManips_DontNetwork and pos != ent:GetManipulateBonePosition(boneID) then
 					net.Start("AdvBone_BoneManipPos_SendToCl")
 						net.WriteEntity(ent)
 						net.WriteInt(boneID, 9)
 						net.WriteVector(pos)
 					net.Broadcast()
 				end
+
+				ent.AdvBone_BoneManips[boneID] = ent.AdvBone_BoneManips[boneID] or {}
+				ent.AdvBone_BoneManips[boneID].p = pos
+				if CLIENT then ent.LastBoneChangeTime = CurTime() end
 			end
-			if CLIENT then
-				ResetBoneChangeTimeOnChildren(ent)
-			elseif networking2 then
-				net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl")
-					net.WriteEntity(ent)
-				net.Broadcast()
-			end
+			AdvBone_ResetBoneChangeTimeOnChildren(ent, networking2)
 		end
 		if !(ent:GetClass() == "ent_advbonemerge" or ent:GetClass() == "prop_animated") then
-			return old_ManipulateBonePosition(ent, boneID, pos, networking, ...) //this doesn't usually return anything, but it's possible some other addon has overriden the function
-		end									     //so it does, so let it return just in case
+			return old_ManipulateBonePosition(ent, boneID, pos, networking, ...)  //this doesn't usually return anything, but it's possible some other addon has overriden the function
+		end									      //so it does, so let it return just in case
 	end
 end
 
@@ -1515,29 +1520,23 @@ if old_ManipulateBoneAngles then
 			if networking2 == nil then networking2 = true end
 
 			if ent.AdvBone_BoneManips then
-				ent.AdvBone_BoneManips[boneID] = ent.AdvBone_BoneManips[boneID] or {}
-				ent.AdvBone_BoneManips[boneID].a = ang
-				if CLIENT then ent.LastBoneChangeTime = CurTime() end
-
-				if SERVER and networking2 and !ent.AdvBone_BoneManips_DontNetwork then
+				if SERVER and networking2 and !ent.AdvBone_BoneManips_DontNetwork and ang != ent:GetManipulateBoneAngles(boneID) then
 					net.Start("AdvBone_BoneManipAng_SendToCl")
 						net.WriteEntity(ent)
 						net.WriteInt(boneID, 9)
 						net.WriteAngle(ang)
 					net.Broadcast()
 				end
+
+				ent.AdvBone_BoneManips[boneID] = ent.AdvBone_BoneManips[boneID] or {}
+				ent.AdvBone_BoneManips[boneID].a = ang
+				if CLIENT then ent.LastBoneChangeTime = CurTime() end
 			end
-			if CLIENT then
-				ResetBoneChangeTimeOnChildren(ent)
-			elseif networking2 then
-				net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl")
-					net.WriteEntity(ent)
-				net.Broadcast()
-			end
+			AdvBone_ResetBoneChangeTimeOnChildren(ent, networking2)
 		end
 		if !(ent:GetClass() == "ent_advbonemerge" or ent:GetClass() == "prop_animated") then
-			return old_ManipulateBoneAngles(ent, boneID, ang, networking, ...) //this doesn't usually return anything, but it's possible some other addon has overriden the function
-		end									  //so it does, so let it return just in case
+			return old_ManipulateBoneAngles(ent, boneID, ang, networking, ...)  //this doesn't usually return anything, but it's possible some other addon has overriden the function
+		end									    //so it does, so let it return just in case
 	end
 end
 
@@ -1575,26 +1574,20 @@ if old_ManipulateBoneScale then
 	function meta.ManipulateBoneScale(ent, boneID, scale, ...)
 		if isentity(ent) and IsValid(ent) then
 			if ent.AdvBone_BoneManips then
-				ent.AdvBone_BoneManips[boneID] = ent.AdvBone_BoneManips[boneID] or {}
-				ent.AdvBone_BoneManips[boneID].s = scale
-				if CLIENT then ent.LastBoneChangeTime = CurTime() end
-
 				//ManipulateBoneScale has no "networking" arg, confirmed through testing 1/1/23
-				if SERVER and !ent.AdvBone_BoneManips_DontNetwork then
+				if SERVER and !ent.AdvBone_BoneManips_DontNetwork and scale != ent:GetManipulateBoneScale(boneID) then
 					net.Start("AdvBone_BoneManipScale_SendToCl")
 						net.WriteEntity(ent)
 						net.WriteInt(boneID, 9)
 						net.WriteVector(scale)
 					net.Broadcast()
 				end
+				
+				ent.AdvBone_BoneManips[boneID] = ent.AdvBone_BoneManips[boneID] or {}
+				ent.AdvBone_BoneManips[boneID].s = scale
+				if CLIENT then ent.LastBoneChangeTime = CurTime() end
 			end
-			if CLIENT then
-				ResetBoneChangeTimeOnChildren(ent)
-			else
-				net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl")
-					net.WriteEntity(ent)
-				net.Broadcast()
-			end
+			AdvBone_ResetBoneChangeTimeOnChildren(ent, true)
 		end
 		//if !(ent:GetClass() == "ent_advbonemerge" or ent:GetClass() == "prop_animated") then
 		if !(ent:GetClass() == "ent_advbonemerge" or (ent:GetClass() == "prop_animated" and ent:GetBoneName(boneID) != "static_prop")) then  //static_prop animprops should still use garrymanips for scale
@@ -1657,18 +1650,11 @@ if old_SetAngles then
 		if IsValid(physobj) and physobj.GetEntity then
 			local ent = physobj:GetEntity()
 			if IsValid(ent) then
-				if CLIENT then
-					ResetBoneChangeTimeOnChildren(ent)
-				else
-					net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl")
-						net.WriteEntity(ent)
-					net.Broadcast()
-				end
+				AdvBone_ResetBoneChangeTimeOnChildren(ent, true)
 			end
 		end
 		return old_SetAngles(physobj, angles, ...)  //this doesn't usually return anything, but it's possible some other addon has overriden the function
-								      //so it does, so let it return just in case
-	end
+	end						    //so it does, so let it return just in case
 end
 
 
