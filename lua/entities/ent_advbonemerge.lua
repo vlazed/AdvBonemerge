@@ -84,8 +84,8 @@ end
 if CLIENT then
 
 	function ENT:BuildBonePositions(bonecount)
-		self.BuildBonePositions_HasRun = true //Newly connected players will add this callback, but then wipe it; this tells the think func that it actually went through
 		if !IsValid(self) then return end
+		self.BuildBonePositions_HasRun = true //Newly connected players will add this callback, but then wipe it; this tells the think func that it actually went through
 		if !self.AdvBone_BoneInfo then return end
 
 		local parent = self:GetParent()
