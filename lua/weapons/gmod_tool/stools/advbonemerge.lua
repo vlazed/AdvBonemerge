@@ -665,13 +665,24 @@ end
 if SERVER then
 
 	util.AddNetworkString("AdvBone_ResetBoneChangeTime_SendToCl")
+	util.AddNetworkString("AdvBone_UpdateBoneAsleep_SendToSv")
+
+	net.Receive("AdvBone_UpdateBoneAsleep_SendToSv", function()
+		local ent = net.ReadEntity()
+		local bool = net.ReadBool()
+		ent.AdvBone_BonesAsleep = bool
+	end)
 
 	AdvBone_ResetBoneChangeTime = function(ent)
 		//Limit how often the server sends this to clients; i don't know of any obvious cases where this would happen a lot like AdvBone_ResetBoneChangeTimeOnChildren does from manips
 		//or stop motion helper, but let's be safe here
 		local time = CurTime()
+		if ent.AdvBone_BonesAsleep == nil then
+			ent.AdvBone_BonesAsleep = true
+		end
 		ent.AdvBone_ResetBoneChangeTime_LastSent = ent.AdvBone_ResetBoneChangeTime_LastSent or 0
-		if time - ent.AdvBone_ResetBoneChangeTime_LastSent > 0.1 then
+		if time > ent.AdvBone_ResetBoneChangeTime_LastSent and ent.AdvBone_BonesAsleep then
+			ent.AdvBone_BonesAsleep = false
 			ent.AdvBone_ResetBoneChangeTime_LastSent = time
 			net.Start("AdvBone_ResetBoneChangeTime_SendToCl", true)
 				net.WriteEntity(ent)
@@ -680,11 +691,23 @@ if SERVER then
 	end
 
 else
-
+	local function sendBoneAsleep(ent, bool)
+		net.Start("AdvBone_UpdateBoneAsleep_SendToSv", true)
+			net.WriteEntity(ent)
+			net.WriteBool(bool)
+		net.SendToServer()
+	end
+	
+	//We allow 10 frames as the client based on the 10 frames until buildbonepositions falls asleep. This can be tuned to observe various effects
+	local BONE_CHANGE_DELAY = 10
 	net.Receive("AdvBone_ResetBoneChangeTime_SendToCl", function()
 		local ent = net.ReadEntity()
 		if IsValid(ent) then
 			ent.LastBoneChangeTime = CurTime()
+			timer.Simple(BONE_CHANGE_DELAY * FrameTime(), function()
+				print(BONE_CHANGE_DELAY * FrameTime())
+				sendBoneAsleep(ent, true)
+			end)	
 		end
 	end)
 
