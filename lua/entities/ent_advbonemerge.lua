@@ -32,7 +32,7 @@ function ENT:Initialize()
 	end
 
 	//Create a clientside advbone manips table so that it gets populated when the server sends us values
-	self.AdvBone_BoneManips = {}
+	self.AdvBone_BoneManips = self.AdvBone_BoneManips or {}
 
 	self:AddEffects(EF_BONEMERGE) //necessary for proper shadow rendering
 	self:AddEffects(EF_BONEMERGE_FASTCULL)
@@ -77,8 +77,15 @@ function ENT:Initialize()
 	self.SavedLocalBonePositions = {}
 	self.LastBoneChangeTime = CurTime()
 
-	self:AddCallback("BuildBonePositions", function(_, bonecount)
+	self:AddCallback("BuildBonePositions", self.BuildBonePositions)
+
+end
+
+if CLIENT then
+
+	function ENT:BuildBonePositions(bonecount)
 		if !IsValid(self) then return end
+		self.BuildBonePositions_HasRun = true //Newly connected players will add this callback, but then wipe it; this tells the think func that it actually went through
 		if !self.AdvBone_BoneInfo then return end
 
 		local parent = self:GetParent()
@@ -596,11 +603,8 @@ function ENT:Initialize()
 		if BonesHaveChanged then
 			self.LastBoneChangeTime = curtime
 		end
-	end)
+	end
 
-end
-
-if CLIENT then
 	function ENT:CalcAbsolutePosition(pos, ang)
 		//Wake up the BuildBonePositions function whenever the entity moves
 		//Note: This will be running every frame for animprops merged to animating entities because the advbonemerge constraint uses FollowBone for some reason I don't recall (exposes more bones?)
@@ -763,7 +767,8 @@ if CLIENT then
 
 		//Fix for demo recording and playback - when demos are recorded, they wipe a bunch of clientside settings like LODs and our BuildBonePositions callback, so redo those by running Initialize.
 		//They also don't seem to record clientside values set on the entity before recording, so tell the server to send us a new BoneInfo table so we can actually record this one.
-		if engine.IsRecordingDemo() and #self:GetCallbacks("BuildBonePositions") == 0 then
+		//Note 10/16/24: Newly connected players also do this, they run Initialize but then wipe the callback and LOD setting right after, so check them as well using self.BuildBonePositions_HasRun.
+		if (!self.BuildBonePositions_HasRun or engine.IsRecordingDemo()) and #self:GetCallbacks("BuildBonePositions") == 0 then
 			self:Initialize()
 			self.AdvBone_BoneInfo_Received = false
 		end
@@ -1205,27 +1210,26 @@ if SERVER then
 			//Copy over DisableBeardFlexifier, so that we can restore it if the ent is re-merged
 			newent:SetNWBool("DisableBeardFlexifier", self:GetNWBool("DisableBeardFlexifier"))
 
-			local _, bboxtop1 = parent:GetCollisionBounds()						//move the unmerged ent above its old parent, with some height to spare -
-			local bboxtop2, _ = newent:GetCollisionBounds()						//position is the center of the parent + the parent's height + the unmerged
-			local height = ( Vector(0,0,bboxtop1.z) + Vector(0,0,-bboxtop2.z) ) + Vector(0,0,25)	//ent's height + some empty space between them
-
 			timer.Simple(0.1, function()	//we need to move the physics objects a bit after the entity has spawned - if we do it at the same time, then the physobjs won't wake up for some reason, and ragdolls will still appear to be at their old location until something bumps into them
 				if !IsValid(newent) or !IsValid(ply) then return end
 				if !IsValid(parent) then newent:Remove() return end //fix a case where attached ents would get unmerged upon parent's deletion sometimes and cause errors
 
+				local _, bboxtop1 = parent:GetRotatedAABB(parent:GetCollisionBounds())
+				local bboxtop2, _ = newent:GetRotatedAABB(newent:GetCollisionBounds())
+				local height = bboxtop1.z + -bboxtop2.z + parent:GetPos().z
+
 				//if newent has multiple physics objects, then we need to move all of the physics objects individually
 				if newent:GetPhysicsObjectCount() > 1 then
-					local offset, _ = WorldToLocal(parent:GetPos() + height, angle_zero, newent:GetPos(), angle_zero)
 					for i = 0, newent:GetPhysicsObjectCount() - 1 do
 						local phys = newent:GetPhysicsObjectNum(i)
-						phys:SetPos(phys:GetPos() + offset)
+						phys:SetPos(Vector(parent:GetPos().x, parent:GetPos().y, height) + (phys:GetPos() - newent:GetPos()))
 						phys:Wake()
 						phys:EnableMotion(false)
 						ply:AddFrozenPhysicsObject(nil, phys)  //the entity argument needs to be nil, or else it'll make unnecessary halo effects and lag up the game
 					end
 				end
 
-				newent:SetPos(parent:GetPos() + height)
+				newent:SetPos(Vector(parent:GetPos().x, parent:GetPos().y, height))
 				local phys = newent:GetPhysicsObject()
 				if IsValid(phys) then
 					phys:Wake()
@@ -1256,7 +1260,7 @@ if SERVER then
 							if val == self then 
 								const[key] = newent
 							//Transfer over bonemerged ents from other addons' bonemerge constraints, and make sure they don't get DeleteOnRemoved
-							elseif (const.Type == "EasyBonemerge" or const.Type == "CompositeEntities_Constraint") //doesn't work for BoneMerge, bah
+							elseif (const.Type == "EasyBonemerge" or const.Type == "CompositeEntities_Constraint" or const.Type == "PartCtrl_Ent") //doesn't work for BoneMerge, bah
 							and isentity(val) and IsValid(val) and val:GetParent() == self then
 								//MsgN("reparenting ", val:GetModel())
 								if const.Type == "CompositeEntities_Constraint" then
@@ -1275,6 +1279,16 @@ if SERVER then
 								const.Entity[tabnum].Index = newent:EntIndex()
 							end
 							entstab[const.Entity[tabnum].Index] = const.Entity[tabnum].Entity
+						end
+
+						if const.Type == "PartCtrl_Ent" and IsValid(const.Ent1) then
+							self:DontDeleteOnRemove(const.Ent1) //Make sure we also clear deleteonremove for unparented cpoints
+							//Tell clients to retrieve the updated info table (the constraint func will change the relevant value to point to our ent)
+							timer.Simple(0.1, function() //do this on a timer, otherwise the advbonemerge ent might not exist on the client yet when they receive the new table
+								net.Start("PartCtrl_InfoTableUpdate_SendToCl")
+									net.WriteEntity(const.Ent1)
+								net.Broadcast()
+							end)
 						end
 
 						//Now copy the constraint over to newent

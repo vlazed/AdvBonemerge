@@ -34,6 +34,7 @@ end
 local ConstraintsToPreserve = {
 	["AdvBoneMerge"] = true,
 	["AttachParticleControllerBeam"] = true, //Advanced Particle Controller addon
+	["PartCtrl_Ent"] = true, //ParticleControlOverhaul
 	["BoneMerge"] = true, //Bone Merger addon
 	["EasyBonemerge"] = true, //Easy Bonemerge Tool addon
 	["CompositeEntities_Constraint"] = true, //Composite Bonemerge addon
@@ -177,7 +178,7 @@ if SERVER then
 						if val == target then 
 							const[key] = newent
 						//Transfer over bonemerged ents from other addons' bonemerge constraints, and make sure they don't get DeleteOnRemoved
-						elseif (const.Type == "EasyBonemerge" or const.Type == "CompositeEntities_Constraint") //doesn't work for BoneMerge, bah
+						elseif (const.Type == "EasyBonemerge" or const.Type == "CompositeEntities_Constraint" or const.Type == "PartCtrl_Ent") //doesn't work for BoneMerge, bah
 						and isentity(val) and IsValid(val) and val:GetParent() == target then
 							//MsgN("reparenting ", val:GetModel())
 							if const.Type == "CompositeEntities_Constraint" then
@@ -196,6 +197,16 @@ if SERVER then
 							const.Entity[tabnum].Index = newent:EntIndex()
 						end
 						entstab[const.Entity[tabnum].Index] = const.Entity[tabnum].Entity
+					end
+
+					if const.Type == "PartCtrl_Ent" and IsValid(const.Ent1) then
+						target:DontDeleteOnRemove(const.Ent1) //Make sure we also clear deleteonremove for unparented cpoints
+						//Tell clients to retrieve the updated info table (the constraint func will change the relevant value to point to our ent)
+						timer.Simple(0.1, function() //do this on a timer, otherwise the advbonemerge ent might not exist on the client yet when they receive the new table
+							net.Start("PartCtrl_InfoTableUpdate_SendToCl")
+								net.WriteEntity(const.Ent1)
+							net.Broadcast()
+						end)
 					end
 
 					//Now copy the constraint over to newent
@@ -473,63 +484,14 @@ end
 
 if SERVER then
 
-	--[[//we have to redefine some of the constraint functions here because they're local functions that don't exist outside of constraints.lua
-	//not sure how well these'll work, one of them is ripped straight from the nocollide world tool which uses the same trick for its custom constraints
-		local MAX_CONSTRAINTS_PER_SYSTEM = 100
-		local function CreateConstraintSystem()
-			local System = ents.Create("phys_constraintsystem")
-			if !IsValid(System) then return end
-			System:SetKeyValue("additionaliterations", GetConVarNumber("gmod_physiterations"))
-			System:Spawn()
-			System:Activate()
-			return System
-		end
-		local function FindOrCreateConstraintSystem( Ent1, Ent2 )
-			local System = nil
-			Ent2 = Ent2 or Ent1
-			-- Does Ent1 have a constraint system?
-			if ( !Ent1:IsWorld() && Ent1:GetTable().ConstraintSystem && Ent1:GetTable().ConstraintSystem:IsValid() ) then 
-				System = Ent1:GetTable().ConstraintSystem
-			end
-			-- Don't add to this system - we have too many constraints on it already.
-			if ( System && System:IsValid() && System:GetVar( "constraints", 0 ) > MAX_CONSTRAINTS_PER_SYSTEM ) then System = nil end
-			-- Does Ent2 have a constraint system?
-			if ( !System && !Ent2:IsWorld() && Ent2:GetTable().ConstraintSystem && Ent2:GetTable().ConstraintSystem:IsValid() ) then 
-				System = Ent2:GetTable().ConstraintSystem
-			end
-			-- Don't add to this system - we have too many constraints on it already.
-			if ( System && System:IsValid() && System:GetVar( "constraints", 0 ) > MAX_CONSTRAINTS_PER_SYSTEM ) then System = nil end
-			-- No constraint system yet (Or they're both full) - make a new one
-			if ( !System || !System:IsValid() ) then
-				--Msg("New Constrant System\n")
-				System = CreateConstraintSystem()
-			end
-			Ent1.ConstraintSystem = System
-			Ent2.ConstraintSystem = System
-			System.UsedEntities = System.UsedEntities or {}
-			table.insert( System.UsedEntities, Ent1 )
-			table.insert( System.UsedEntities, Ent2 )
-			local ConstraintNum = System:GetVar( "constraints", 0 )
-			System:SetVar( "constraints", ConstraintNum + 1 )
-			--Msg("System has "..tostring( System:GetVar( "constraints", 0 ) ).." constraints\n")
-			return System
-		end
-	//end ripped constraint functions here.]]
-
 	function constraint.AdvBoneMerge( Ent1, Ent2, ply )
 
 		if !Ent1 or !Ent2 then return end
-
-		//onStartConstraint( Ent1, Ent2 )
-		//local system = FindOrCreateConstraintSystem( Ent1, Ent2 ) //TEST: commented out
-		//SetPhysConstraintSystem( system ) //TEST: commented out
 		
 		//create a dummy ent for the constraint functions to use
 		local Constraint = ents.Create("info_target")//("logic_collision_pair")
 		Constraint:Spawn()
 		Constraint:Activate()
-
-
 
 		//If the constraint is removed by an Undo, unmerge the second entity - this shouldn't do anything if the constraint's removed some other way i.e. one of the ents is removed
 		timer.Simple(0.1, function()  //CallOnRemove won't do anything if we try to run it now instead of on a timer
@@ -568,11 +530,6 @@ if SERVER then
 
 		AdvBoneSetLightingOrigin(Ent1,Ent2)
 
-
-
-		//onFinishConstraint( Ent1, Ent2 )
-		//SetPhysConstraintSystem( NULL ) //TEST: commented out
-
 		constraint.AddConstraintTable( Ent1, Constraint, Ent2 )
 		
 		local ctable  = 
@@ -586,6 +543,7 @@ if SERVER then
 		Constraint:SetTable( ctable )
 	
 		return Constraint
+
 	end
 	duplicator.RegisterConstraint("AdvBoneMerge", constraint.AdvBoneMerge, "Ent1", "Ent2", "ply")
 
@@ -1576,6 +1534,15 @@ if CLIENT then
 						if !utilitiesnotempty then 
 							submenuoption:Remove()
 							spacer:Remove()
+						end
+
+						//Edit ParticleControlOverhaul fx
+						if PartCtrl_EditProperty_Filter and PartCtrl_EditProperty_Filter(_, modelent, ply) then
+							menu:AddSpacer()
+
+							local option = menu:AddOption("Edit Particle Effects..")
+							option:SetImage("icon16/fire.png")
+							PartCtrl_EditProperty_MenuOpen(_, option, modelent)
 						end
 
 						menu:Open()
