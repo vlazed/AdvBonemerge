@@ -37,9 +37,9 @@ end
 
 local ConstraintsToPreserve = {
 	AdvBoneMerge = true,
-	AttachParticleControllerBeam = true, //Advanced Particle Controller addon
-	PartCtrl_Ent = true, //ParticleControlOverhaul
-	PartCtrl_SpecialEffect = true, //ParticleControlOverhaul
+	AttachParticleControllerBeam = true, //old Advanced Particle Controller addon
+	PEPlus_Ent = true, //Particle Effects+ addon
+	PEPlus_SpecialEffect = true, //Particle Effects+ addon
 	BoneMerge = true, //Bone Merger addon
 	EasyBonemerge = true, //Easy Bonemerge Tool addon
 	CompositeEntities_Constraint = true, //Composite Bonemerge addon
@@ -119,8 +119,8 @@ if SERVER then
 		end
 		//Copy over DisableBeardFlexifier, just in case we're an unmerged ent that inherited this value
 		newent:SetNWBool("DisableBeardFlexifier", oldent:GetNWBool("DisableBeardFlexifier"))
-		//Store a value if we're a merged ParticleControlOverhaul grip point
-		newent:SetPartCtrl_MergedGrip(oldent.PartCtrl_Grip)
+		//Store a value if we're a merged Particle Effects+ grip point
+		newent:SetPEPlus_MergedGrip(oldent.PEPlus_Grip)
 
 		//Create a BoneInfo table - this is used to store bone manipulation info other than the standard Position/Angle/Scale values already available by default
 		local boneinfo = {}
@@ -189,12 +189,12 @@ if SERVER then
 							const[key] = newent
 						//Transfer over bonemerged ents from other addons' bonemerge constraints, and make sure they don't get DeleteOnRemoved
 						elseif (const.Type == "EasyBonemerge" or const.Type == "CompositeEntities_Constraint" 
-						or const.Type == "PartCtrl_Ent" or const.Type == "PartCtrl_SpecialEffect") //doesn't work for BoneMerge, bah
+						or const.Type == "PEPlus_Ent" or const.Type == "PEPlus_SpecialEffect") //doesn't work for BoneMerge, bah
 						and isentity(val) and IsValid(val) and val:GetParent() == target then
 							//MsgN("reparenting ", val:GetModel(), " ", val, " to ", newent)
 							if const.Type == "CompositeEntities_Constraint" then
 								val:SetParent(newent)
-							elseif const.Type == "PartCtrl_SpecialEffect" then
+							elseif const.Type == "PEPlus_SpecialEffect" then
 								val:SetParent(newent)
 								val:SetSpecialEffectParent(newent)
 							end
@@ -213,7 +213,7 @@ if SERVER then
 						entstab[const.Entity[tabnum].Index] = const.Entity[tabnum].Entity
 					end
 
-					if const.Type == "PartCtrl_Ent" or const.Type == "PartCtrl_SpecialEffect" and IsValid(const.Ent1) then
+					if const.Type == "PEPlus_Ent" or const.Type == "PEPlus_SpecialEffect" and IsValid(const.Ent1) then
 						target:DontDeleteOnRemove(const.Ent1) //Make sure we also clear deleteonremove for unparented cpoints
 					end
 
@@ -224,10 +224,10 @@ if SERVER then
 				end
 			end
 		end
-		//Unbreak all ParticleControlOverhaul fx attached to the ent or any of its children
-		if PartCtrl_RefreshAllChildFx then 
+		//Unbreak all Particle Effects+ fx attached to the ent or any of its children
+		if PEPlus_RefreshAllChildFx then 
 			timer.Simple(0.1, function() //do this on a timer, otherwise the advbonemerge ent might not exist on the client yet when they receive the new table
-				PartCtrl_RefreshAllChildFx(newent)
+				PEPlus_RefreshAllChildFx(newent)
 			end)
 		end
 
@@ -340,15 +340,15 @@ function TOOL:LeftClick(trace)
 			undo.AddEntity(const)  //the constraint entity will unmerge newent upon being removed
 			undo.SetPlayer(ply)
 		local nodename = newent:GetModel()
-		if (newent.GetPartCtrl_MergedGrip and newent:GetPartCtrl_MergedGrip()) then
+		if (newent.GetPEPlus_MergedGrip and newent:GetPEPlus_MergedGrip()) then
 			//Merged particle effects display the name of the particle instead
 			nodename = "particle" //placeholder in case this fails somehow
-			local tab = constraint.FindConstraint(newent, "PartCtrl_Ent")
-			if istable(tab) and IsValid(tab.Ent1) and tab.Ent1.PartCtrl_Ent then
+			local tab = constraint.FindConstraint(newent, "PEPlus_Ent")
+			if istable(tab) and IsValid(tab.Ent1) and tab.Ent1.PEPlus_Ent then
 				nodename = tab.Ent1:GetParticleName()
 			else
-				local tab = constraint.FindConstraint(newent, "PartCtrl_SpecialEffect")
-				if istable(tab) and IsValid(tab.Ent1) and tab.Ent1.PartCtrl_SpecialEffect then
+				local tab = constraint.FindConstraint(newent, "PEPlus_SpecialEffect")
+				if istable(tab) and IsValid(tab.Ent1) and tab.Ent1.PEPlus_SpecialEffect then
 					nodename = tab.Ent1.PrintName
 				end
 			end
@@ -1422,15 +1422,15 @@ if CLIENT then
 					local nodename = string.StripExtension( string.GetFileFromFilename(modelent:GetModel()) )
 					local doparticlenamethink = false
 					local function DoParticleNodeName(k)
-						//ParticleControlOverhaul grip points display the name of the particle instead
-						if istable(modelent.PartCtrl_ParticleEnts) then
-							for k, _ in pairs (modelent.PartCtrl_ParticleEnts) do
+						//Particle Effects+ grip points display the name of the particle instead
+						if istable(modelent.PEPlus_ParticleEnts) then
+							for k, _ in pairs (modelent.PEPlus_ParticleEnts) do
 								if k.GetParticleName and istable(k.ParticleInfo) then
 									nodename = k:GetParticleName()
 									//Use nice capitalized display name if possible
-									local pcf = PartCtrl_GetGamePCF(k:GetPCF(), k:GetPath())
-									if PartCtrl_ProcessedPCFs[pcf] and PartCtrl_ProcessedPCFs[pcf][k:GetParticleName()] then
-										nodename = PartCtrl_ProcessedPCFs[pcf][k:GetParticleName()].nicename
+									local pcf = PEPlus_GetGamePCF(k:GetPCF(), k:GetPath())
+									if PEPlus_ProcessedPCFs[pcf] and PEPlus_ProcessedPCFs[pcf][k:GetParticleName()] then
+										nodename = PEPlus_ProcessedPCFs[pcf][k:GetParticleName()].nicename
 									end
 									doparticlenamethink = false
 									//If the particle has multiple position cpoints, then add this cpoint's number to the nodename,
@@ -1458,7 +1458,7 @@ if CLIENT then
 					end
 					if modelent:GetClass() == "prop_animated" then
 						nodename = nodename .. " (animated)"
-					elseif modelent.PartCtrl_Grip or (modelent.GetPartCtrl_MergedGrip and modelent:GetPartCtrl_MergedGrip()) then
+					elseif modelent.PEPlus_Grip or (modelent.GetPEPlus_MergedGrip and modelent:GetPEPlus_MergedGrip()) then
 						doparticlenamethink = true
 						DoParticleNodeName()
 						//If we weren't able to get the particle name yet, then give it a placeholder name until the think func can replace it
@@ -1479,7 +1479,7 @@ if CLIENT then
 					updatename()
 
 					local nodeseticon = function(skinid) //this is a function so we can update the icon skin when using the skin utility
-						if modelent.PartCtrl_Grip or (modelent.GetPartCtrl_MergedGrip and modelent:GetPartCtrl_MergedGrip()) then
+						if modelent.PEPlus_Grip or (modelent.GetPEPlus_MergedGrip and modelent:GetPEPlus_MergedGrip()) then
 							node.Icon:SetImage("icon16/fire.png")
 							return
 						end
@@ -1886,13 +1886,13 @@ if CLIENT then
 							submenuoption:Remove()
 						end
 
-						//Edit ParticleControlOverhaul fx
-						if PartCtrl_EditProperty_Filter and PartCtrl_EditProperty_Filter(_, modelent, ply) then
+						//Edit Particle Effects+ fx
+						if PEPlus_EditProperty_Filter and PEPlus_EditProperty_Filter(_, modelent, ply) then
 							menu:AddSpacer()
 
 							local option = menu:AddOption("Edit Particle Effects..")
 							option:SetImage("icon16/fire.png")
-							PartCtrl_EditProperty_MenuOpen(_, option, modelent)
+							PEPlus_EditProperty_MenuOpen(_, option, modelent)
 						end
 
 						menu:Open()
@@ -2007,7 +2007,7 @@ if CLIENT then
 								end
 							end
 						elseif doparticlenamethink then
-							//If the node's entity is a ParticleControlOverhaul grip point that hasn't networked the necessary 
+							//If the node's entity is a Particle Effects+ grip point that hasn't networked the necessary 
 							//info to the client yet, then keep trying until we have it and can set the name properly.
 							DoParticleNodeName()
 							if !doparticlenamethink then
@@ -2499,7 +2499,7 @@ if CLIENT then
 						slider:SetAlpha(255)
 					end
 				end
-				if ent.PartCtrl_Grip or (ent.GetPartCtrl_MergedGrip and ent:GetPartCtrl_MergedGrip())  then
+				if ent.PEPlus_Grip or (ent.GetPEPlus_MergedGrip and ent:GetPEPlus_MergedGrip())  then
 					SetSliderDisabled(panel.slider_scale_x, true)
 					SetSliderDisabled(panel.slider_scale_y, true)
 					SetSliderDisabled(panel.slider_scale_z, true)

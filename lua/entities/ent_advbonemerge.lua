@@ -11,7 +11,7 @@ ENT.RenderGroup			= false //let the engine set the rendergroup by itself
 
 function ENT:SetupDataTables()
 
-	self:NetworkVar("Bool", 0, "PartCtrl_MergedGrip")
+	self:NetworkVar("Bool", 0, "PEPlus_MergedGrip")
 
 end
 
@@ -1046,7 +1046,7 @@ if CLIENT then
 
 
 				local matrscl = matr:GetScale()
-				local mergedgrip = self:GetPartCtrl_MergedGrip()
+				local mergedgrip = self:GetPEPlus_MergedGrip()
 				if !mergedgrip and (self.AdvBone_StaticPropUsedRenderMultiply or Vector(math.Round(matrscl.x,4),math.Round(matrscl.y,4),math.Round(matrscl.z,4)) != mdlsclvec) then
 					//Because EnableMatrix's scale is multiplicative, we actually need to counteract the model scale before applying it to ourselves or else it'll be doubled
 					matr:SetScale( Vector(ourscale.x / mdlscl, ourscale.y / mdlscl, ourscale.z / mdlscl) )
@@ -1318,7 +1318,7 @@ if SERVER then
 				end
 			end)
 
-			if !self:GetPartCtrl_MergedGrip() then //unmerged particle grips don't need an undo, because we already have a separate one for the particle itself
+			if !self:GetPEPlus_MergedGrip() then //unmerged particle grips don't need an undo, because we already have a separate one for the particle itself
 				//Add an undo entry
 				local printname = newent:GetClass() or "Entity"
 				if newent.PrintName and newent.PrintName != "" then printname = tostring(newent.PrintName) end
@@ -1343,12 +1343,12 @@ if SERVER then
 								const[key] = newent
 							//Transfer over bonemerged ents from other addons' bonemerge constraints, and make sure they don't get DeleteOnRemoved
 							elseif (const.Type == "EasyBonemerge" or const.Type == "CompositeEntities_Constraint" 
-							or const.Type == "PartCtrl_Ent" or const.Type == "PartCtrl_SpecialEffect") //doesn't work for BoneMerge, bah
+							or const.Type == "PEPlus_Ent" or const.Type == "PEPlus_SpecialEffect") //doesn't work for BoneMerge, bah
 							and isentity(val) and IsValid(val) and val:GetParent() == self then
 								//MsgN("reparenting ", val:GetModel(), " ", val, " to ", newent)
 								if const.Type == "CompositeEntities_Constraint" then
 									val:SetParent(newent)
-								elseif const.Type == "PartCtrl_SpecialEffect" then
+								elseif const.Type == "PEPlus_SpecialEffect" then
 									val:SetParent(newent)
 									val:SetSpecialEffectParent(newent)
 								end
@@ -1367,7 +1367,7 @@ if SERVER then
 							entstab[const.Entity[tabnum].Index] = const.Entity[tabnum].Entity
 						end
 
-						if const.Type == "PartCtrl_Ent" or const.Type == "PartCtrl_SpecialEffect" and IsValid(const.Ent1) then
+						if const.Type == "PEPlus_Ent" or const.Type == "PEPlus_SpecialEffect" and IsValid(const.Ent1) then
 							self:DontDeleteOnRemove(const.Ent1) //Make sure we also clear deleteonremove for unparented cpoints
 						end
 
@@ -1376,10 +1376,10 @@ if SERVER then
 					end
 				end
 			end
-			//Unbreak all ParticleControlOverhaul fx attached to the ent or any of its children
-			if PartCtrl_RefreshAllChildFx then 
+			//Unbreak all Particle Effects+ fx attached to the ent or any of its children
+			if PEPlus_RefreshAllChildFx then 
 				timer.Simple(0.1, function() //do this on a timer, otherwise the advbonemerge ent might not exist on the client yet when they receive the new table
-					PartCtrl_RefreshAllChildFx(newent)
+					PEPlus_RefreshAllChildFx(newent)
 				end)
 			end
 
@@ -1457,6 +1457,11 @@ end
 
 
 duplicator.RegisterEntityClass("ent_advbonemerge", function(ply, data)
+
+	if data.DT and data.DT.PartCtrl_MergedGrip then //old in-dev var name, for old saves/dupes
+		data.DT.PEPlus_MergedGrip = data.DT.PartCtrl_MergedGrip
+		data.DT.PartCtrl_MergedGrip = nil
+	end
 
 	local dupedent = ents.Create("ent_advbonemerge")
 	if (!dupedent:IsValid()) then return false end
