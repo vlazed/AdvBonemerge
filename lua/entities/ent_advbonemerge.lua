@@ -90,6 +90,21 @@ function ENT:Initialize()
 
 end
 
+//Client "full updates" happen upon new player connection, lag spikes, running the 'cl_fullupdate' concommand, and demo recording (all but the last 
+//are exclusive to multiplayer) - this recreates the entity, but doesn't run Initialize again, which breaks our BuildBonePositions callback, so fix 
+//this by running Initialize again manually. For demo support, we also need to request the server to send us a new info table, so that the demo can 
+//record this one.
+function ENT:OnRemove(fullupdate)
+	if fullupdate then
+		timer.Simple(0, function()
+			if IsValid(self) then 
+				self:Initialize()
+				self.AdvBone_BoneInfo_Received = false
+			end
+		end)
+	end
+end
+
 if CLIENT then
 
 	CreateClientConVar("cl_advbone_debug_sleep", 0, false, false, "If 1, show sleep status of ent_advbonemerge's BuildBonePositions function (red = asleep, green = awake)", 0, 1)
@@ -97,7 +112,6 @@ if CLIENT then
 
 	function ENT:BuildBonePositions(bonecount)
 		if !IsValid(self) then return end
-		self.BuildBonePositions_HasRun = true //Newly connected players will add this callback, but then wipe it; this tells the think func that it actually went through
 		if !self.AdvBone_BoneInfo then return end
 
 		local parent = self:GetParent()
@@ -833,14 +847,6 @@ if CLIENT then
 
 
 	function ENT:Think()
-
-		//Fix for demo recording and playback - when demos are recorded, they wipe a bunch of clientside settings like LODs and our BuildBonePositions callback, so redo those by running Initialize.
-		//They also don't seem to record clientside values set on the entity before recording, so tell the server to send us a new BoneInfo table so we can actually record this one.
-		//Note 10/16/24: Newly connected players also do this, they run Initialize but then wipe the callback and LOD setting right after, so check them as well using self.BuildBonePositions_HasRun.
-		if (!self.BuildBonePositions_HasRun or engine.IsRecordingDemo()) and #self:GetCallbacks("BuildBonePositions") == 0 then
-			self:Initialize()
-			self.AdvBone_BoneInfo_Received = false
-		end
 
 		local parent = self:GetParent()
 		if !IsValid(parent) then parent = nil end
