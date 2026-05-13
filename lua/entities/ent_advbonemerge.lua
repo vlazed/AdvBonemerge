@@ -107,8 +107,37 @@ end
 
 if CLIENT then
 
-	CreateClientConVar("cl_advbone_debug_sleep", 0, false, false, "If 1, show sleep status of ent_advbonemerge's BuildBonePositions function (red = asleep, green = awake)", 0, 1)
-	local cv_debug_sleep = GetConVar("cl_advbone_debug_sleep")
+	--[[local function DotAbs(v0,v1)
+		return math.abs(v0.x*v1.x) + math.abs(v0.y*v1.y) + math.abs(v0.z*v1.z)
+	end
+	local m = Matrix()]]
+	//Adaptation of valve's RotateAABB. https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/mathlib/mathlib_base.cpp#L2967
+	local function GetRotatedAABB(mins, maxs, ang)
+		--[[local localCenter = (mins + maxs) * 0.5
+		local localExtents = maxs - localCenter
+		localCenter:Rotate(ang)
+
+		//Just using the fwd/left/up from the angle returns bad results if the angle is rotated on more than one axis,
+		//instead we also have to do this matrix inversion thing adapted from goldsrc/xash3D(?) code https://github.com/Aynekko/Diffusion/blob/master/game_shared/mathlib.cpp#L218
+		m:Identity()
+		m:SetAngles(ang)
+		m:Invert()
+		local newExtents = Vector(
+			DotAbs(localExtents, m:GetForward()),
+			DotAbs(localExtents, -m:GetRight()),
+			DotAbs(localExtents, m:GetUp())
+		)
+
+		return localCenter - newExtents, localCenter + newExtents]]
+
+		//This method is faster actually
+		if !IsValid(AdvBone_AABB) then
+			AdvBone_AABB = ClientsideModel("models/props_junk/watermelon01.mdl", RENDERGROUP_OTHER)
+			AdvBone_AABB:SetColor(Color(0,0,0,0))
+		end
+		AdvBone_AABB:SetAngles(ang)
+		return AdvBone_AABB:GetRotatedAABB(mins, maxs)
+	end
 
 	function ENT:BuildBonePositions(bonecount)
 		if !IsValid(self) then return end
@@ -196,13 +225,6 @@ if CLIENT then
 			end
 		end
 
-		if cv_debug_sleep:GetBool() then
-			if skip then
-				self:SetColor( Color(255,0,0,255) )
-			else
-				self:SetColor( Color(0,255,0,255) )
-			end
-		end
 		//If we're going to skip, then use cached bone matrices instead of computing new ones, and stop here
 		if !self.HasDrawn then //fix: don't let buildbonepositions fall asleep if we spawned offscreen and haven't been seen by the client yet, otherwise it'll save bad bone positions
 			self.LastBoneChangeTime = curtime
@@ -221,8 +243,10 @@ if CLIENT then
 					self:SetBoneMatrix(i, self.SavedBoneMatrices[i])
 				end
 			end
+			self.AdvBone_Asleep = true //this tells the think func to stop calculating render bounds
 			return
 		end
+		self.AdvBone_Asleep = nil
 
 
 
@@ -293,7 +317,7 @@ if CLIENT then
 
 			self.AdvBone_DefaultBoneOffsets = defaultboneoffsets
 
-			if !self.AdvBone_BoneHitBoxes then //Fallback in  case we don't have any hitboxes to use for render bounds
+			if !self.AdvBone_BoneHitBoxes then //Fallback in case we don't have any hitboxes to use for render bounds
 				//Calculate the amount of extra "bloat" to put around our bones when setting our render bounds
 				local modelmins, modelmaxs = self.csmodel:GetModelRenderBounds()
 				//Get the largest amount of space between the bone and model bounds and use that as our bloat value - we have to use the largest size on all axes since players can 
@@ -530,7 +554,7 @@ if CLIENT then
 						bonepos = WorldToLocal(matr:GetTranslation(), Angle(), parent:GetPos(), parent:GetAngles())
 						if self.AdvBone_BoneHitBoxes[i] then
 							//local pos = matr:GetTranslation()
-							local scl = matr:GetScale()
+							--[[local scl = matr:GetScale()
 							local pmins = self.AdvBone_BoneHitBoxes[i].min * scl
 							local pmaxs = self.AdvBone_BoneHitBoxes[i].max * scl
 							local vects = {
@@ -555,7 +579,15 @@ if CLIENT then
 									math.max(vects[1].y, vects[2].y, vects[3].y, vects[4].y, 
 									vects[5].y, vects[6].y, vects[7].y, vects[8].y),
 									math.max(vects[1].z, vects[2].z, vects[3].z, vects[4].z, 
-									vects[5].z, vects[6].z, vects[7].z, vects[8].z) )
+									vects[5].z, vects[6].z, vects[7].z, vects[8].z) )]]
+
+							//new method, is this faster?
+							local scl = matr:GetScale()
+							local pos, ang = WorldToLocal(matr:GetTranslation(), matr:GetAngles(), parent:GetPos(), parent:GetAngles())
+							hitboxmin, hitboxmax = GetRotatedAABB(self.AdvBone_BoneHitBoxes[i].min * scl, self.AdvBone_BoneHitBoxes[i].max * scl, ang)
+							hitboxmin = hitboxmin + pos
+							hitboxmax = hitboxmax + pos
+
 							self.SavedLocalHitBoxes[i] = {min = hitboxmin, max = hitboxmax}
 						end
 						self.SavedLocalBonePositions[i] = bonepos
@@ -569,11 +601,9 @@ if CLIENT then
 					end
 
 					local function SetBoneMinsMaxs(vec)
-						if !bonemins and !bonemaxs then
-							bonemins = Vector()
-							bonemaxs = Vector()
-							bonemins:Set(vec)
-							bonemaxs:Set(vec)
+						if !bonemins then
+							bonemins = Vector(vec)
+							bonemaxs = Vector(vec)
 						else
 							bonemins.x = math.min(vec.x,bonemins.x)
 							bonemins.y = math.min(vec.y,bonemins.y)
@@ -583,7 +613,7 @@ if CLIENT then
 							bonemaxs.z = math.max(vec.z,bonemaxs.z)
 						end
 					end
-					if hitboxmin and hitboxmax then
+					if hitboxmin then
 						SetBoneMinsMaxs(hitboxmin)
 						SetBoneMinsMaxs(hitboxmax)
 						//debugoverlay.BoxAngles(parent:GetPos(), hitboxmin, hitboxmax, parent:GetAngles(), 0.1, Color(255,255,0,0))
@@ -1094,8 +1124,7 @@ if CLIENT then
 
 
 		//Set the render bounds
-		if !parent or !self.AdvBone_RenderBounds_BoneMins or !self.AdvBone_RenderBounds_HighestBoneScale then return end
-		if IsStaticProp or !(self.LastBoneChangeTime + (FrameTime() * 10) < curtime) then //same check as BuildBonePosition's "skip" - don't update this stuff if the bones haven't moved in a while
+		if !self.AdvBone_Asleep and parent and self.AdvBone_RenderBounds_BoneMins and self.AdvBone_RenderBounds_HighestBoneScale then
 			local bloat = nil
 			if self.AdvBone_RenderBounds_Bloat then
 				bloat = self.AdvBone_RenderBounds_Bloat * self.AdvBone_RenderBounds_HighestBoneScale
@@ -1136,6 +1165,9 @@ if CLIENT then
 		AdvBone_IsSkyboxDrawing = false
 	end)
 
+	CreateClientConVar("cl_advbone_debug_sleep", 0, false, false, "If 1, show sleep status of ent_advbonemerge's BuildBonePositions function (red = asleep, green = awake)", 0, 1)
+	local cv_debug_sleep = GetConVar("cl_advbone_debug_sleep")
+
 	function ENT:Draw(flag)
 
 		//try to prevent this from being rendered additional times if it has a child with EF_BONEMERGE; TODO: i can't find any situation where this breaks anything, but it still feels like it could.
@@ -1175,6 +1207,14 @@ if CLIENT then
 			elseif shoulddraw and self.RemovedLocalplayerShadow then
 				self.RemovedLocalplayerShadow = nil
 				self:CreateShadow()
+			end
+		end
+
+		if cv_debug_sleep:GetBool() then
+			if self.AdvBone_Asleep then
+				render.SetColorModulation(1,0,0)
+			else
+				render.SetColorModulation(0,1,0)
 			end
 		end
 
