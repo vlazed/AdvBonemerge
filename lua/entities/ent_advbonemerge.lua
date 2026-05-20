@@ -110,6 +110,7 @@ if CLIENT then
 		if !IsValid(AdvBone_AABB) then
 			AdvBone_AABB = ClientsideModel("models/props_junk/watermelon01.mdl", RENDERGROUP_OTHER)
 			AdvBone_AABB:SetColor(Color(0,0,0,0))
+			AdvBone_AABB:SetNoDraw(true)
 		end
 		AdvBone_AABB:SetAngles(ang)
 		return AdvBone_AABB:GetRotatedAABB(mins, maxs)
