@@ -83,6 +83,7 @@ function ENT:Initialize()
 	self.LastBuildBonePositionsTime = 0
 	self.SavedBoneMatrices = {}
 	self.LastBoneChangeTime = CurTime()
+	self.LastModel = self:GetModel()
 
 	self:AddCallback("BuildBonePositions", self.BuildBonePositions)
 
@@ -224,6 +225,21 @@ if CLIENT then
 			return
 		end
 		self.AdvBone_Asleep = nil
+
+
+
+
+		//Catch errors caused by changing the entity's model:
+		//1: If the model has changed, DefaultBoneOffsets will be incorrect, so recreate them
+		//2: If we send an updated BoneInfo table for the new model at the same time, it'll take at least another frame to make it to clients,
+		//   so throw out the old table and wait to receive the new one.
+		if self.LastModel != self:GetModel() then
+			self.AdvBone_DefaultBoneOffsets = nil
+			self.AdvBone_BoneInfo = nil
+			self.AdvBone_BoneInfo_Received = false
+			self.LastModel = self:GetModel()
+			return
+		end
 
 
 
@@ -1216,6 +1232,8 @@ if SERVER then
 			if enttable.Skin != self:GetSkin() then enttable.Skin = self:GetSkin() end
 			//Entity mods (setting a custom name will make this different from the original ent)
 			enttable.EntityMods = table.Copy(self.EntityMods)
+			//Model (just in case)
+			enttable.Model = self:GetModel()
 
 			//Fix: Due to a badly written function in the duplicator module (PhysicsObject.Load - lua/includes/modules/duplicator.lua:67, uses "Entity" value not defined anywhere in the function), 
 			//using duplicator.Paste here to paste a frozen physobj causes errors. I have no idea why it still works when called by the duplicator itself because it has the same value there, but
