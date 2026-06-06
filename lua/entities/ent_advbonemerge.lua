@@ -1197,43 +1197,50 @@ if SERVER then
 
 		local enttable = self.AdvBone_UnmergeInfo
 		if enttable then
-			//Correct values that have been changed by utilities since merging
-			//Face poser
-			local flexscalenew = self:GetFlexScale()
-			if enttable.FlexScale != flexscalenew then enttable.FlexScale = flexscalenew end
-			local flexnew = nil
-			for i = 0, self:GetFlexNum() do
-				local w = self:GetFlexWeight(i)
-				if w != 0 then
-					flexnew = flexnew or {}
-					flexnew[i] = w
-				end
-			end
-			if enttable.Flex != flexnew then enttable.Flex = flexnew end
-			//Eye poser
-			if self.EntityMods and self.EntityMods.eyetarget then
-				local eyetargetnew = self.EntityMods.eyetarget
-				if !enttable.EntityMods then enttable.EntityMods = {} end
-				if enttable.EntityMods.eyetarget != eyetargetnew then enttable.EntityMods.eyetarget = table.Copy(eyetargetnew) end
-			end
-			//Bodygroups
-			local bg = self:GetBodyGroups()
-			local bgnew = nil
-			if bg then
-				for k, v in pairs(bg) do
-					if self:GetBodygroup(v.id) > 0 then
-						bgnew = bgnew or {}
-						bgnew[v.id] = self:GetBodygroup(v.id)
+			//Update values that have been changed since merging
+			local function UpdateValues(tab)
+				//Face poser
+				local flexscalenew = self:GetFlexScale()
+				if tab.FlexScale != flexscalenew then tab.FlexScale = flexscalenew end
+				local flexnew = nil
+				for i = 0, self:GetFlexNum() do
+					local w = self:GetFlexWeight(i)
+					if w != 0 then
+						flexnew = flexnew or {}
+						flexnew[i] = w
 					end
 				end
+				if tab.Flex != flexnew then tab.Flex = flexnew end
+				//Eye poser
+				if self.EntityMods and self.EntityMods.eyetarget then
+					local eyetargetnew = self.EntityMods.eyetarget
+					if !tab.EntityMods then tab.EntityMods = {} end
+					if tab.EntityMods.eyetarget != eyetargetnew then tab.EntityMods.eyetarget = table.Copy(eyetargetnew) end
+				end
+				//Bodygroups
+				local bg = self:GetBodyGroups()
+				local bgnew = nil
+				if bg then
+					for k, v in pairs(bg) do
+						if self:GetBodygroup(v.id) > 0 then
+							bgnew = bgnew or {}
+							bgnew[v.id] = self:GetBodygroup(v.id)
+						end
+					end
+				end
+				if tab.BodyG != bgnew then tab.BodyG = bgnew end
+				//Skin
+				if tab.Skin != self:GetSkin() then tab.Skin = self:GetSkin() end
+				//Entity mods (setting a custom name will make this different from the original ent)
+				tab.EntityMods = table.Copy(self.EntityMods)
+				//Model (just in case)
+				tab.Model = self:GetModel()
 			end
-			if enttable.BodyG != bgnew then enttable.BodyG = bgnew end
-			//Skin
-			if enttable.Skin != self:GetSkin() then enttable.Skin = self:GetSkin() end
-			//Entity mods (setting a custom name will make this different from the original ent)
-			enttable.EntityMods = table.Copy(self.EntityMods)
-			//Model (just in case)
-			enttable.Model = self:GetModel()
+			if enttable.AttachedEntityInfo then
+				UpdateValues(enttable.AttachedEntityInfo)
+			else
+				UpdateValues(enttable)
+			end
 
 			//Fix: Due to a badly written function in the duplicator module (PhysicsObject.Load - lua/includes/modules/duplicator.lua:67, uses "Entity" value not defined anywhere in the function), 
 			//using duplicator.Paste here to paste a frozen physobj causes errors. I have no idea why it still works when called by the duplicator itself because it has the same value there, but
