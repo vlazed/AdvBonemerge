@@ -1097,6 +1097,10 @@ if CLIENT then
 			end
 		end
 
+		if not self:IsEffectActive( EF_BONEMERGE ) then
+			self:AddEffects(EF_BONEMERGE)
+			self:AddEffects(EF_BONEMERGE_FASTCULL)
+		end
 
 		self:NextThink(curtime)
 		//return true
