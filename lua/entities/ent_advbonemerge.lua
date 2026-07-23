@@ -195,7 +195,8 @@ if CLIENT then
 						else
 							self.SavedParentBoneMatrices = parentbones
 						end
-						skip = true //TODO: saw this when looking through code, is this right? it's not here in prop_animated, is this to cover spme edge case i forgot to comment? doesn't seem to be causing problems.
+					else
+						skip = true //fix: sleep so we don't calculate renderbounds often if we don't have many bones
 					end
 				end
 			else
