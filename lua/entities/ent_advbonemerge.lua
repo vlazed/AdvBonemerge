@@ -6,8 +6,8 @@ ENT.PrintName			= "Advanced Bonemerge Entity"
 ENT.Spawnable			= false
 ENT.RenderGroup			= false //let the engine set the rendergroup by itself
 
-
-
+//do BuildBonePositions and AdvBone_ResetBoneChangeTimeOnChildren_SendToCl at a configurable time interval (specified by sv_advbone_sleep)
+local BoneChangeIntervalCVar = CreateConVar("advbonemerge_sleep", 0.1, {FCVAR_ARCHIVE, FCVAR_REPLICATED}, "The interval which the entity must wait to update its bones", 0, 1)
 
 function ENT:SetupDataTables()
 
@@ -138,7 +138,7 @@ if CLIENT then
 			//If our bones haven't changed position in a while, then fall asleep and skip until one of our parent's bones moves,
 			//or until we/our parent get bonemanipped (see function overrides at bottom of this page)
 			//This check isn't the cheapest, but it's still a whole lot better than updating all our bones.
-			if self.LastBoneChangeTime + (FrameTime() * 10) < curtime then
+			if self.LastBoneChangeTime + BoneChangeIntervalCVar:GetFloat() < curtime then
 				if parent.AdvBone_LastParentBoneCheckTime and parent.AdvBone_LastParentBoneCheckTime >= curtime then
 					//This check only needs to be performed once per frame, even if there are multiple models merged to one parent
 					skip = true
@@ -1546,11 +1546,9 @@ AdvBone_ResetBoneChangeTimeOnChildren = function(ent, networking) //global func 
 			local class = ent2:GetClass()
 			if class == "ent_advbonemerge" or class == "prop_animated" then
 				//Limit how often the server sends this to clients; multiple bone manips at once or ragdoll movements i.e. Stop Motion Helper will run this several times per frame
-				//TODO: can we delay this longer? the client waits until 10 *frames* after LastBoneChangeTime to let BuildBonePositions fall asleep, which of course isn't consistent with server 
-				//tickrate at all, so i don't know how we'd add any more of a delay without potentially breaking things for players with an insanely high framerate.
 				local time = CurTime()
 				ent.AdvBone_ResetBoneChangeTimeOnChildren_LastSent = ent.AdvBone_ResetBoneChangeTimeOnChildren_LastSent or time
-				if time > ent.AdvBone_ResetBoneChangeTimeOnChildren_LastSent then
+				if time > ent.AdvBone_ResetBoneChangeTimeOnChildren_LastSent + BoneChangeIntervalCVar:GetFloat() then
 					ent.AdvBone_ResetBoneChangeTimeOnChildren_LastSent = time
 					net.Start("AdvBone_ResetBoneChangeTimeOnChildren_SendToCl", true)
 						net.WriteEntity(ent)
