@@ -915,10 +915,9 @@ if SERVER then
 
 		local input = net.ReadUInt(4)
 
-		local data, data2
+		local data
 		if input == 6 then //set bodygroup
-			data = net.ReadUInt(8)
-			data2 = net.ReadUInt(8)
+			data = {net.ReadUInt(8), net.ReadUInt(8)}
 		elseif input == 7 then //set skin
 			data = net.ReadUInt(8)
 		elseif input == 11 then //set custom name
@@ -1015,7 +1014,7 @@ if SERVER then
 
 			if !gamemode.Call("CanProperty", ply, "bodygroups", ent) then return end
 
-			ent:SetBodygroup(data, data2)
+			ent:SetBodygroup(data[1], data[2])
 
 		elseif input == 7 then //set skin
 
@@ -1055,6 +1054,12 @@ if SERVER then
 				ent:SetNWString("AdvBone_CustomName", nil)
 				duplicator.ClearEntityModifier(ent, "AdvBone_CustomName")
 			end
+
+		elseif input == 12 then //invert
+			
+			if !ent.SetInvert or (ent:GetClass() != "ent_advbonemerge" and ent:GetClass() != "prop_animated") then return end
+
+			ent:SetInvert(!ent:GetInvert())
 
 		end
 	end)
@@ -1952,6 +1957,26 @@ if CLIENT then
 										end
 									end
 								end
+								utilitiesnotempty = true
+							end
+
+							//only create a spacer here if we've made options above this
+							if utilitiesnotempty then
+								submenu:AddSpacer()
+							end
+
+							//Invert
+							if modelent.GetInvert and (modelent:GetClass() == "ent_advbonemerge" or modelent:GetClass() == "prop_animated") then
+								local opt = submenu:AddOption("Invert model")
+								opt:SetChecked(modelent:GetInvert())
+								opt:SetIsCheckable(true)
+								opt.OnChecked = function(s, checked)
+									net.Start("AdvBone_CPanelInput_SendToSv")
+										net.WriteEntity(modelent)
+										net.WriteUInt(12, 4) //input id 12
+									net.SendToServer()
+								end
+								//opt:SetImage("")
 								utilitiesnotempty = true
 							end
 						

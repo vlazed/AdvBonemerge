@@ -15,6 +15,7 @@ local cv_sleep = CreateConVar("sv_advbone_sleep", 0.1, {FCVAR_ARCHIVE, FCVAR_REP
 function ENT:SetupDataTables()
 
 	self:NetworkVar("Bool", 0, "PEPlus_MergedGrip")
+	self:NetworkVar("Bool", 1, "Invert")
 
 end
 
@@ -1038,9 +1039,25 @@ if CLIENT then
 				self.AdvBone_OriginMatrix = self.AdvBone_StaticPropMatrix //things following the origin should use this matrix too
 
 
-				local matrscl = matr:GetScale()
 				local mergedgrip = self:GetPEPlus_MergedGrip()
-				if !mergedgrip and (self.AdvBone_StaticPropUsedRenderMultiply or Vector(math.Round(matrscl.x,4),math.Round(matrscl.y,4),math.Round(matrscl.z,4)) != mdlsclvec) then
+				if !mergedgrip and !self.AdvBone_StaticPropUsedRenderMultiply then
+					local matrscl = matr:GetScale()
+					if Vector(math.Round(matrscl.x,4),math.Round(matrscl.y,4),math.Round(matrscl.z,4)) != mdlsclvec then
+						//If the matr's scale is different from the model scale, then we need to apply scale using RenderMultiply
+						self.AdvBone_StaticPropUsedRenderMultiply = true
+					else
+						//The above check doesn't catch negative scales because matr:GetScale() always returns absolute values (i.e. bones 
+						//with scale manip 1,-1,1 still return matrscl 1,1,1). This means static_prop bones that are mirrored on an axis 
+						//but otherwise unscaled won't get applied with RenderMultiply unless we catch them with a separate check here.
+						local a, b, c = matr:GetField(1,1), matr:GetField(1,2), matr:GetField(1,3)
+						local d, e, f = matr:GetField(2,1), matr:GetField(2,2), matr:GetField(2,3)
+						local g, h, i = matr:GetField(3,1), matr:GetField(3,2), matr:GetField(3,3)
+						if (a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)) <= 0 then //get the determinant (https://stackoverflow.com/questions/9455298/3x3-matrix-determinant-function-making-it-faster); this will be negative if the matr scale is negative on 1 or 3 axes (https://discussions.unity.com/t/need-help-supporting-negative-values-when-extracting-scale-from-4x4-transform-matrix/102706/2)
+							self.AdvBone_StaticPropUsedRenderMultiply = true
+						end
+					end
+				end
+				if !mergedgrip and self.AdvBone_StaticPropUsedRenderMultiply then
 					//Because EnableMatrix's scale is multiplicative, we actually need to counteract the model scale before applying it to ourselves or else it'll be doubled
 					matr:SetScale( Vector(ourscale.x / mdlscl, ourscale.y / mdlscl, ourscale.z / mdlscl) )
 
@@ -1182,7 +1199,9 @@ if CLIENT then
 			//if self.AdvBone_Asleep is nil (BuildBonePositions isn't running), then don't change color
 		end
 
+		if self:GetInvert() then render.CullMode(MATERIAL_CULLMODE_CW) end
 		self:DrawModel()
+		render.CullMode(MATERIAL_CULLMODE_CCW)
 		self.HasDrawn = true //fix: don't let buildbonepositions fall asleep if we spawned offscreen and haven't been seen by the client yet, otherwise it'll save bad bone positions
 
 	end
