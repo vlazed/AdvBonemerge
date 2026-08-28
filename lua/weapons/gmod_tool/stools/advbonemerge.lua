@@ -2808,44 +2808,126 @@ if CLIENT then
 		end
 		panel.targetbonelist:SetSortItems(false)
 
-		//Modified OpenMenu fuction to check the currently selected bone
+		//Modified OpenMenu fuction to add quick filter to menu, as well as check the currently selected bone and do AdvBone_BoneHoverData
 		panel.targetbonelist.OpenMenu = function(self, pControlOpener)
-			if ( pControlOpener && pControlOpener == self.TextEntry ) then
+			if pControlOpener and pControlOpener == self.TextEntry then
 				return
 			end
 
 			-- Don't do anything if there aren't any options..
-			if ( #self.Choices == 0 ) then return end
+			if #self.Choices == 0 then return end
 
 			-- If the menu still exists and hasn't been deleted
 			-- then just close it and don't open a new one.
-			if ( IsValid( self.Menu ) ) then
+			if IsValid(self.Menu) then
 				self.Menu:Remove()
 				self.Menu = nil
 			end
 
-			self.Menu = DermaMenu( false, self )
-
-			//only this block is meaningfully changed
-			local ent = panel.modellist.selectedent
-			if IsValid(ent) then ent = ent:GetParent() end
-			if IsValid(ent) and ent.AttachedEntity then ent = ent.AttachedEntity end
-			for k, v in pairs (self.Choices) do
-				local option = self.Menu:AddOption( v, function() self:ChooseOption( v, k ) end )
-				if panel.targetbonelist.selectedtargetbone == self.Data[k] then option:SetChecked(true) end  //check the currently selected target bone
-				
-				if self.Data[k] >= 0 then //don't show for "(none)" option
-					option.AdvBone_BoneHoverData = { //info for on-hover check in HUDPaint
-						id = self.Data[k],
-						ent = ent
-					}
-				end
+			self.Menu = DermaMenu(false, self)
+			//Don't let the menu run MakePopup or it'll steal focus from our textentry and make it unusable; 
+			//instead we'll set the menu's parent manually in self.Menu.UpdateList below for the same effect
+			self.Menu.MakePopup = function() end
+			function self.Menu:OnRemove() 
+				//fix keyboard focus getting stuck on textentry if we remove the menu while focused
+				local chump = vgui.GetKeyboardFocus()
+				if IsValid(chump) then chump:KillFocus() end
 			end
 
-			local x, y = self:LocalToScreen( 0, self:GetTall() )
+			//Dock a quick filter box inside the dropdown, above the scrolling list of bones
+			local old_OnChildAdded = self.Menu.OnChildAdded
+			self.Menu.OnChildAdded = nil //by default this will force the textentry to be added to the scrolling list, so temporarily disable this
+			local entry = vgui.Create("DTextEntry", self.Menu)
+			entry:Dock(TOP)
+			entry:SetZPos(-1) //this ensures that the entry docks at the top of the panel above the VBar
+			self.Menu:GetCanvas():SetZPos(-10) //and *this* prevents the canvas behind the entry from blocking its mouse clicks
+			entry:SetPlaceholderText("#spawnmenu.quick_filter")
+			entry:SetUpdateOnType(true)
+			entry.OnValueChange = function(_, filter)
+				if filter == "" then
+					filter = nil
+				elseif filter then
+					filter = filter:lower()
+				end
+				self.Menu.UpdateList(filter)
+			end
+			self.Menu.OnChildAdded = old_OnChildAdded
+			self.Menu:GetCanvas():Dock(FILL)
+			//Modify the menu's PerformLayout to make it give extra height for the entry
+			function self.Menu:PerformLayout(w,h)
+				local minW = self:GetMinimumWidth()
 
-			self.Menu:SetMinimumWidth( self:GetWide() )
-			self.Menu:Open( x, y, false, self )
+				-- Find the widest one
+				for k, pnl in ipairs( self:GetCanvas():GetChildren() ) do
+
+					pnl:InvalidateLayout( true )
+					minW = math.max( minW, pnl:GetWide() )
+
+				end
+
+				self:SetWide( minW )
+
+				local y = entry:GetTall() //this line is the only change from default (https://github.com/Facepunch/garrysmod/blob/master/garrysmod/lua/vgui/dmenu.lua#L153-L187)
+
+				for k, pnl in ipairs( self:GetCanvas():GetChildren() ) do
+
+					pnl:SetWide( minW )
+					pnl:SetPos( 0, y )
+					pnl:InvalidateLayout( true )
+
+					y = y + pnl:GetTall()
+
+				end
+
+				y = math.min( y, self:GetMaxHeight() )
+
+				self:SetTall( y )
+
+				derma.SkinHook( "Layout", "Menu", self )
+
+				DScrollPanel.PerformLayout( self, minW, h )
+			end
+
+			function self.Menu.UpdateList(filter)
+				self.Menu:Clear()
+
+				local ent = panel.modellist.selectedent
+				if IsValid(ent) then ent = ent:GetParent() end
+				if IsValid(ent) and ent.AttachedEntity then ent = ent.AttachedEntity end
+				for k, v in pairs (self.Choices) do
+					if filter and !v:lower():find(filter, nil, true) then continue end
+
+					local option = self.Menu:AddOption(v, function() self:ChooseOption(v, k) end)
+					if panel.targetbonelist.selectedtargetbone == self.Data[k] then option:SetChecked(true) end //check the currently selected target bone
+					
+					if self.Data[k] >= 0 then //don't show for "(none)" option
+						option.AdvBone_BoneHoverData = { //info for on-hover check in HUDPaint
+							id = self.Data[k],
+							ent = ent
+						}
+					end
+				end
+
+				local x, y = self:LocalToScreen(0, self:GetTall())
+				self.Menu:SetMinimumWidth(self:GetWide())
+				timer.Simple(0, function()
+					if !IsValid(self.Menu) then return end 
+
+					//this needs to be done on a timer, or else the menu won't be set to the correct y pos when the filter updates
+					//it to be smaller; instead, it'll use the same y pos as the previous iteration until we update the filter again
+					self.Menu:Open(x, y, false, self)
+				
+					//and *this* needs to be done *after* each time we run self.Menu:Open, or else the textentry loses focus (why?)
+					local par = nil
+					if g_ContextMenu and g_ContextMenu:IsVisible() then
+						par = g_ContextMenu
+					elseif g_SpawnMenu and g_SpawnMenu:IsVisible() then
+						par = g_SpawnMenu
+					end
+					self.Menu:SetParent(par)
+				end)
+			end
+			self.Menu.UpdateList()
 		end
 
 
