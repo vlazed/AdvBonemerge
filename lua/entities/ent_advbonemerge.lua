@@ -147,11 +147,12 @@ if CLIENT then
 					//This check only needs to be performed once per frame, even if there are multiple models merged to one parent
 					skip = true
 				else
-					//Don't bother doing this if the parent has significantly more bones than we do
 					local parbonecount = parent:GetBoneCount()
-					if parbonecount / 2 <= bonecount then
+					//If our parent's bonecount is so much higher than our bonecount that doing this wakeup check
+					//would be *more expensive* than building our own bone positions, then don't bother doing this
+					if bonecount + 1 > parbonecount / 7 then //parent has over 7x more bones than us, including our origin manip
 						local parentbones = {}
-						for i = -1, parbonecount - 1 do
+						for i = 0, parbonecount - 1 do
 							local matr = parent:GetBoneMatrix(i)
 							if ismatrix(matr) then
 								//parentbones[i] = matr:ToTable() //this func suuucks for perf when there's a lot at once
@@ -619,7 +620,7 @@ if CLIENT then
 		//update bones once, and then fall asleep in the very next frame without checking. This is bad because it can cause this model to 
 		//freeze intermittently while the parent animates (i.e. gun attachments on a character playing a subtle idle animation), or fall 
 		//asleep in a position out-of-sync with the parent (i.e. bones merged to jigglebones)
-		self.AdvBone_AllowSleep = !BonesHaveChanged 
+		self.AdvBone_AllowSleep = !BonesHaveChanged
 	end
 
 	function ENT:CalcAbsolutePosition(pos, ang)
